@@ -145,7 +145,7 @@ class ProcessDocument:
         # ETAPA 3: Persistencia atómica de resultados en carpeta organizada
         # Guarda todos los resultados de forma consistente en una carpeta dedicada
         # Si falla aquí, no se pierde el trabajo de OCR/tablas ya realizado
-        archivos_generados: List[str] = self.storage.save(pdf_path, text, tables, pdf_path)
+        archivos_generados: List[str] = self.storage.save(pdf_path.stem, text, tables, pdf_path)
 
         # ETAPA 4: Identificación del archivo principal
         # El archivo de texto completo es el resultado principal

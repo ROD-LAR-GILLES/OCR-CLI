@@ -118,7 +118,7 @@ class FileStorage(StoragePort):
             json.JSONEncodeError: Si las tablas contienen datos no serializables
         """
         # Crear carpeta específica para este documento
-        document_folder = self.out_dir / name.stem
+        document_folder = self.out_dir / name
         document_folder.mkdir(parents=True, exist_ok=True)
         
         archivos_generados = []
@@ -163,7 +163,7 @@ class FileStorage(StoragePort):
         # 4. COPIA DEL PDF ORIGINAL - Para trazabilidad y referencia
         # Mantiene el archivo original junto con los resultados procesados
         # Útil para: auditoría, comparación, reprocesamiento si es necesario
-        pdf_copy_path = document_folder / f"{name.stem}_original.pdf"
+        pdf_copy_path = document_folder / f"{name}_original.pdf"
         shutil.copy(original, pdf_copy_path)
         archivos_generados.append(str(pdf_copy_path))
         

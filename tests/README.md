@@ -14,7 +14,7 @@ tests/
 
 ## Beneficios de la Separación I/O
 
-### ✅ Antes (Código Mezclado)
+### Antes (Código Mezclado)
 ```python
 def main():
     archivos = listar_pdfs()        # Lógica de negocio
@@ -24,11 +24,11 @@ def main():
 ```
 
 **Problemas:**
-- ❌ No se puede testear sin simular `input()` y `print()`
-- ❌ Difícil de reutilizar en otras interfaces
-- ❌ Tests complejos y frágiles
+-  No se puede testear sin simular `input()` y `print()`
+-  Difícil de reutilizar en otras interfaces
+-  Tests complejos y frágiles
 
-### ✅ Después (Código Separado)
+###  Después (Código Separado)
 ```python
 # Lógica pura (testeable)
 def get_selected_pdf(archivos: list, seleccion: int) -> str:
@@ -45,9 +45,9 @@ def main():
 ```
 
 **Beneficios:**
-- ✅ Lógica testeable sin simulación de I/O
-- ✅ Reutilizable en GUI, API, tests
-- ✅ Tests simples y confiables
+-  Lógica testeable sin simulación de I/O
+-  Reutilizable en GUI, API, tests
+-  Tests simples y confiables
 
 ## Ejecutar Tests
 
@@ -124,10 +124,10 @@ def test_discover_pdf_files():
 
 Los tests cubren:
 
-- ✅ **Lógica de menús**: Validación de selecciones, creación de opciones
-- ✅ **Utilidades de archivos**: Descubrimiento, validación, información
-- ✅ **Controladores**: Procesamiento de documentos, manejo de errores
-- ✅ **Configuración OCR**: Creación y validación de configuraciones
+-  **Lógica de menús**: Validación de selecciones, creación de opciones
+-  **Utilidades de archivos**: Descubrimiento, validación, información
+-  **Controladores**: Procesamiento de documentos, manejo de errores
+-  **Configuración OCR**: Creación y validación de configuraciones
 
 ## Tests de Integración
 
