@@ -36,7 +36,7 @@ from application.controllers import DocumentController
 
 # Configuración de directorios Docker
 # Estos paths son montados como volúmenes en docker-compose.yml
-PDF_DIR = Path("/pdfs")            # Directorio de entrada (host: ./pdfs)
+PDF_DIR = Path("/app/pdfs")        # Directorio de entrada (host: ./pdfs)
 OUT_DIR = Path("/app/resultado")   # Directorio de salida (host: ./resultado)
 
 

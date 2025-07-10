@@ -334,7 +334,9 @@ class TesseractOpenCVAdapter(OCRPort):
         if lines is not None:
             # Calcular ángulo promedio de las líneas detectadas
             angles = []
-            for rho, theta in lines[:10]:  # Usar solo las 10 líneas más fuertes
+            for line in lines[:10]:  # Usar solo las 10 líneas más fuertes
+                # cv2.HoughLines devuelve líneas como arrays de [rho, theta]
+                rho, theta = line[0]  # Extraer rho y theta del array
                 angle = theta - np.pi / 2  # Convertir a ángulo de rotación
                 angles.append(angle)
             

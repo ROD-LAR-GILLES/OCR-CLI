@@ -85,7 +85,17 @@ class DocumentController:
             start_time = time.time()
             
             # Ejecutar procesamiento
-            texto_principal, archivos_generados = processor(pdf_path)
+            try:
+                result = processor(pdf_path)
+                
+                # Verificar si es una tupla con 2 elementos
+                if isinstance(result, tuple) and len(result) == 2:
+                    texto_principal, archivos_generados = result
+                else:
+                    raise ValueError(f"ProcessDocument retornó {type(result)} en lugar de tupla de 2 elementos: {result}")
+                    
+            except Exception as debug_error:
+                raise Exception(f"Error en processor(): {debug_error}")
             
             processing_time = time.time() - start_time
             
