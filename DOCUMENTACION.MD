@@ -152,9 +152,7 @@ questionary.select(
    resultado/
    └── documento/
        ├── texto_completo.txt (texto plano extraído)
-       ├── tabla_1.json (primera tabla estructurada)
-       ├── tabla_2.json (segunda tabla estructurada)
-       ├── todas_las_tablas.txt (visualización ASCII)
+       ├── documento.md (documento Markdown estructurado)
        └── documento_original.pdf (copia del original)
 ```
 

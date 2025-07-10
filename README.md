@@ -32,7 +32,7 @@ OCR-CLI es una aplicación de línea de comandos diseñada con **arquitectura he
   - Conversión automática a pandas DataFrames
 
 - **`storage_filesystem.py`**:
-  - Múltiples formatos de salida (TXT, JSON, ASCII)
+  - Múltiples formatos de salida (TXT, Markdown)
   - Estrategias de persistencia y organización de archivos
   - Opciones de tabulate para diferentes visualizaciones
   - Trazabilidad y backup de archivos originales
@@ -104,21 +104,16 @@ page.extract_tables()
 
 ### **pandas**
 ```python
-# Formatos de serialización JSON
-orient="split"    # {index: [...], columns: [...], data: [...]}
-orient="records"  # [{col1: val1, col2: val2}, ...]
-orient="index"    # {index1: {col1: val1}, ...}
-orient="values"   # [[val1, val2], [val3, val4]]
+# Configuraciones de tabulate para Markdown
+tablefmt="pipe"      # Markdown estándar para documentos
+tablefmt="github"    # Formato Markdown compatible con GitHub
 ```
 
 ### **tabulate**
 ```python
-# Estilos de tabla ASCII
+# Configuraciones de tabulate para Markdown
+tablefmt="pipe"      # Markdown estándar para documentos
 tablefmt="github"    # Formato Markdown compatible con GitHub
-tablefmt="grid"      # Bordes completos Unicode
-tablefmt="simple"    # Formato minimalista
-tablefmt="pipe"      # Markdown estándar
-tablefmt="html"      # Salida HTML para web
 ```
 
 ### **questionary**
@@ -150,8 +145,8 @@ questionary.select(
    c. Storage: text+tables → múltiples formatos → filesystem
 6. Output Generation:
    - documento.txt (texto plano)
-   - documento_table_N.json (tablas estructuradas)
-   - documento_tables.txt (visualización ASCII)
+   - documento.md (documento Markdown estructurado)
+   - documento.pdf (copia original)
    - documento.pdf (copia original)
 ```
 

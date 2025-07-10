@@ -6,12 +6,12 @@ Este módulo implementa el puerto StoragePort para persistir los resultados
 del procesamiento OCR en el sistema de archivos local, generando múltiples
 formatos de salida para diferentes casos de uso.
 """
-import json
 import shutil
 from pathlib import Path
 from typing import List, Any
 import pandas as pd
 from tabulate import tabulate
+from datetime import datetime
 
 from application.ports import StoragePort
 
@@ -29,13 +29,11 @@ class FileStorage(StoragePort):
     resultado/
     ├── documento1/
     │   ├── texto_completo.txt           <- Texto plano extraído por OCR
-    │   ├── tabla_1.json                 <- Primera tabla como JSON estructurado
-    │   ├── tabla_2.json                 <- Segunda tabla como JSON estructurado
-    │   ├── todas_las_tablas.txt         <- Todas las tablas en formato ASCII
+    │   ├── documento1.md                <- Documento Markdown con texto y tablas
     │   └── documento1_original.pdf      <- Copia del archivo original
     └── documento2/
         ├── texto_completo.txt
-        ├── tabla_1.json
+        ├── documento2.md
         └── documento2_original.pdf
     
     Ventajas de la organización por carpetas:
@@ -47,9 +45,8 @@ class FileStorage(StoragePort):
     
     Formatos generados por documento:
     1. texto_completo.txt - Texto plano extraído por OCR (legible por humanos)
-    2. tabla_N.json - Cada tabla como JSON estructurado (integración con APIs)
-    3. todas_las_tablas.txt - Todas las tablas en formato ASCII (visualización rápida)
-    4. [nombre]_original.pdf - Copia del archivo original (trazabilidad)
+    2. [nombre].md - Documento Markdown estructurado con texto y tablas (documentación)
+    3. [nombre]_original.pdf - Copia del archivo original (trazabilidad)
     
     Ventajas del almacenamiento en archivos:
     - Simple y rápido de implementar
@@ -91,8 +88,7 @@ class FileStorage(StoragePort):
         
         Genera una suite completa de archivos de salida para diferentes casos de uso:
         - Análisis manual (TXT legible)
-        - Integración programática (JSON estructurado) 
-        - Visualización rápida (ASCII tables)
+        - Documentación estructurada (Markdown formateado) 
         - Trazabilidad (PDF original)
         
         Args:
@@ -108,14 +104,11 @@ class FileStorage(StoragePort):
             resultado/
             └── documento/
                 ├── texto_completo.txt          <- Texto completo OCR
-                ├── tabla_1.json                <- Primera tabla como JSON
-                ├── tabla_2.json                <- Segunda tabla como JSON
-                ├── todas_las_tablas.txt        <- Todas las tablas en ASCII
+                ├── documento.md                <- Documento Markdown estructurado
                 └── documento_original.pdf      <- Copia del PDF original
             
         Raises:
             OSError: Si hay problemas de permisos o espacio en disco
-            json.JSONEncodeError: Si las tablas contienen datos no serializables
         """
         # Crear carpeta específica para este documento
         document_folder = self.out_dir / name
@@ -130,37 +123,25 @@ class FileStorage(StoragePort):
         texto_path.write_text(text, encoding="utf-8")
         archivos_generados.append(str(texto_path))
 
-        # 2. TABLAS COMO JSON - Para integración programática
-        # Cada tabla se guarda como archivo JSON independiente usando pandas
-        # orient="split" genera JSON con estructura: {"index": [...], "columns": [...], "data": [...]}
-        # Ventajas: preserva tipos de datos, fácil de cargar en pandas/numpy
-        for i, df in enumerate(tables, start=1):
-            json_path = document_folder / f"tabla_{i}.json"
-            # pandas.to_json() soporta múltiples formatos:
-            # - "split": separado en index, columns, data (recomendado para pandas)
-            # - "records": lista de objetos {col1: val1, col2: val2}
-            # - "index": objeto con index como keys
-            # - "values": solo matriz de valores
-            df.to_json(json_path, orient="split")
-            archivos_generados.append(str(json_path))
-            
-        # 3. TABLAS EN ASCII - Para visualización rápida
-        # Genera representación textual legible de todas las tablas
+        # 2. ARCHIVO MARKDOWN - Para documentación estructurada
+        # Genera un archivo Markdown completo con texto y tablas formateadas
+        markdown_content = f"# Documento Procesado: {name}\n\n"
+        markdown_content += "## Texto Extraído\n\n"
+        markdown_content += text + "\n\n"
+        
         if tables:
-            # tabulate genera tablas ASCII con múltiples estilos:
-            # - "github": formato Markdown compatible con GitHub
-            # - "grid": bordes completos con caracteres Unicode
-            # - "simple": formato minimalista
-            # - "pipe": formato Markdown estándar
-            # - "html": salida HTML para web
-            concat_ascii = "\n\n".join(
-                tabulate(df, tablefmt="github") for df in tables
-            )
-            ascii_path = document_folder / "todas_las_tablas.txt"
-            ascii_path.write_text(concat_ascii, "utf-8")
-            archivos_generados.append(str(ascii_path))
+            markdown_content += "## Tablas Extraídas\n\n"
+            for i, df in enumerate(tables, start=1):
+                markdown_content += f"### Tabla {i}\n\n"
+                # Usar formato pipe (Markdown estándar) para las tablas
+                table_markdown = tabulate(df, tablefmt="pipe", headers="keys")
+                markdown_content += table_markdown + "\n\n"
+        
+        markdown_path = document_folder / f"{name}.md"
+        markdown_path.write_text(markdown_content, encoding="utf-8")
+        archivos_generados.append(str(markdown_path))
 
-        # 4. COPIA DEL PDF ORIGINAL - Para trazabilidad y referencia
+        # 3. COPIA DEL PDF ORIGINAL - Para trazabilidad y referencia
         # Mantiene el archivo original junto con los resultados procesados
         # Útil para: auditoría, comparación, reprocesamiento si es necesario
         pdf_copy_path = document_folder / f"{name}_original.pdf"
