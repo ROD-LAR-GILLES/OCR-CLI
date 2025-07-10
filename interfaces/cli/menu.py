@@ -22,6 +22,7 @@ Tecnologías utilizadas:
 from pathlib import Path
 import questionary
 from adapters.ocr_tesseract import TesseractAdapter
+from adapters.ocr_tesseract_opencv import TesseractOpenCVAdapter
 from adapters.table_pdfplumber import PdfPlumberAdapter
 from adapters.storage_filesystem import FileStorage
 from application.use_cases import ProcessDocument
@@ -64,79 +65,127 @@ def procesar_archivo(nombre: str):
     """
     Ejecuta el procesamiento completo de un archivo PDF específico.
     
-    Esta función orquesta todo el flujo de procesamiento:
-    1. Configura las dependencias necesarias (adaptadores)
-    2. Instancia el caso de uso con inyección de dependencias
-    3. Ejecuta el procesamiento completo
-    4. Proporciona feedback detallado del resultado
+    Esta función permite al usuario elegir entre diferentes motores de OCR:
+    - TesseractAdapter: OCR básico y rápido
+    - TesseractOpenCVAdapter: OCR avanzado con preprocesamiento OpenCV
+    
+    El usuario puede configurar las opciones de preprocesamiento según
+    la calidad del documento a procesar.
     
     Args:
         nombre (str): Nombre del archivo PDF a procesar (debe existir en PDF_DIR)
-    
-    Proceso de ejecución:
-    1. Construcción de ruta completa al archivo PDF
-    2. Configuración de adaptadores específicos:
-       - TesseractAdapter: OCR con idioma español y DPI 300
-       - PdfPlumberAdapter: Extracción de tablas estructuradas
-       - FileStorage: Persistencia en sistema de archivos
-    3. Ejecución del caso de uso ProcessDocument
-    4. Presentación de resultados al usuario
-    
-    Example:
-        >>> procesar_archivo("documento.pdf")
-        
-        documento.pdf procesado.
-           - Texto:     ['/app/resultado/documento.txt']
-           - JSON:      /app/resultado/documento.txt
-    
-    Error Handling:
-        - FileNotFoundError: Si el archivo PDF no existe
-        - OCRError: Si el proceso de OCR falla
-        - StorageError: Si hay problemas al guardar resultados
-        
-    Performance Notes:
-        - El tiempo de procesamiento depende del tamaño y complejidad del PDF
-        - OCR es la operación más lenta (puede tomar minutos para documentos grandes)
-        - El progreso se muestra en tiempo real
     """
     # Construye la ruta completa al archivo PDF
     pdf_path = PDF_DIR / nombre
     
-    # CONFIGURACIÓN DE DEPENDENCIAS
-    # Implementa el patrón de Inyección de Dependencias para máxima flexibilidad
+    # SELECCIÓN DEL MOTOR OCR
+    # Permite al usuario elegir entre adaptadores disponibles
+    ocr_choice = questionary.select(
+        "Selecciona el motor de OCR:",
+        choices=[
+            "Tesseract básico (rápido)",
+            "Tesseract + OpenCV (alta calidad)",
+            "Volver al menú principal"
+        ]
+    ).ask()
     
-    # TesseractAdapter: Configuración optimizada para documentos en español
-    # - lang="spa": Modelo de idioma español para mejor precisión
-    # - dpi=300: Balance óptimo entre calidad y velocidad
-    ocr_adapter = TesseractAdapter()
+    if not ocr_choice or ocr_choice == "Volver al menú principal":
+        return
     
+    # CONFIGURACIÓN DEL ADAPTADOR OCR
+    if ocr_choice == "Tesseract básico (rápido)":
+        # TesseractAdapter: Configuración básica optimizada para velocidad
+        ocr_adapter = TesseractAdapter()
+        print(f"\n🔤 Usando Tesseract básico...")
+        
+    elif ocr_choice == "Tesseract + OpenCV (alta calidad)":
+        # TesseractOpenCVAdapter: Configuración avanzada con preprocesamiento
+        print(f"\n🔧 Configurando preprocesamiento OpenCV...")
+        
+        # Permitir al usuario personalizar el preprocesamiento
+        advanced_config = questionary.confirm(
+            "¿Configurar opciones avanzadas de preprocesamiento?"
+        ).ask()
+        
+        if advanced_config:
+            # Configuración granular de OpenCV
+            enable_deskewing = questionary.confirm(
+                "¿Corregir inclinación del documento? (recomendado para escaneos)"
+            ).ask()
+            
+            enable_denoising = questionary.confirm(
+                "¿Aplicar eliminación de ruido? (recomendado para imágenes de baja calidad)"
+            ).ask()
+            
+            enable_contrast = questionary.confirm(
+                "¿Mejorar contraste automáticamente? (recomendado para documentos con poca iluminación)"
+            ).ask()
+            
+            ocr_adapter = TesseractOpenCVAdapter(
+                enable_deskewing=enable_deskewing,
+                enable_denoising=enable_denoising,
+                enable_contrast_enhancement=enable_contrast,
+            )
+        else:
+            # Configuración por defecto: todas las mejoras activadas
+            ocr_adapter = TesseractOpenCVAdapter()
+            
+        print(f"🎯 Usando Tesseract + OpenCV con preprocesamiento avanzado...")
+        
+        # Mostrar configuración aplicada
+        config_info = ocr_adapter.get_preprocessing_info()
+        print(f"   - Corrección de inclinación: {'✅' if config_info['deskewing_enabled'] else '❌'}")
+        print(f"   - Eliminación de ruido: {'✅' if config_info['denoising_enabled'] else '❌'}")
+        print(f"   - Mejora de contraste: {'✅' if config_info['contrast_enhancement_enabled'] else '❌'}")
+        print(f"   - OpenCV versión: {config_info['opencv_version']}")
+    
+    # CONFIGURACIÓN DE ADAPTADORES AUXILIARES
     # PdfPlumberAdapter: Extracción de tablas de PDFs nativos
-    # Ideal para documentos generados digitalmente (vs escaneados)
     table_adapter = PdfPlumberAdapter()
     
     # FileStorage: Persistencia local con múltiples formatos de salida
-    # Genera archivos TXT, JSON, ASCII para diferentes casos de uso
     storage_adapter = FileStorage(OUT_DIR)
     
     # INSTANCIACIÓN DEL CASO DE USO
     # ProcessDocument orquesta todo el flujo de procesamiento
-    # Las dependencias se inyectan via constructor (Dependency Injection)
     interactor = ProcessDocument(
         ocr=ocr_adapter,
         table_extractor=table_adapter,
         storage=storage_adapter,
     )
     
-    # EJECUCIÓN DEL PROCESAMIENTO
-    # El caso de uso es callable (__call__), implementando Command Pattern
-    # Retorna rutas de archivos generados para feedback al usuario
-    texto_principal, archivos_generados = interactor(pdf_path)
+    # EJECUCIÓN DEL PROCESAMIENTO CON MEDICIÓN DE TIEMPO
+    print(f"\n🚀 Iniciando procesamiento de {nombre}...")
+    import time
+    start_time = time.time()
     
-    # FEEDBACK AL USUARIO
-    # Presenta resultados de forma clara y actionable
-    print(f"\n{nombre} procesado.")
-    print(f"   - Texto:     {archivos_generados}")
-    print(f"   - JSON:      {texto_principal}\n")
+    try:
+        # Ejecutar procesamiento completo
+        texto_principal, archivos_generados = interactor(pdf_path)
+        
+        # Calcular tiempo de procesamiento
+        processing_time = time.time() - start_time
+        
+        # FEEDBACK DETALLADO AL USUARIO
+        print(f"\n✅ {nombre} procesado exitosamente!")
+        print(f"⏱️  Tiempo de procesamiento: {processing_time:.2f} segundos")
+        print(f"📁 Archivos generados: {len(archivos_generados)}")
+        print(f"   - Texto principal: {texto_principal}")
+        print(f"   - Todos los archivos: {archivos_generados}")
+        
+        # Mostrar estadísticas si usamos OpenCV
+        if isinstance(ocr_adapter, TesseractOpenCVAdapter):
+            print(f"🔬 Preprocesamiento OpenCV aplicado con éxito")
+            
+    except Exception as e:
+        # Manejo de errores con información detallada
+        processing_time = time.time() - start_time
+        print(f"\n❌ Error procesando {nombre}:")
+        print(f"   💥 Error: {str(e)}")
+        print(f"   ⏱️  Tiempo hasta error: {processing_time:.2f} segundos")
+        print(f"   💡 Sugerencia: Prueba con el motor básico si el documento es de alta calidad")
+    
+    print()  # Línea en blanco para separación visual
 
 
 def main():
