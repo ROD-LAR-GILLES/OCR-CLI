@@ -9,8 +9,7 @@ import time
 from pathlib import Path
 from typing import Tuple, List, Dict, Any
 
-from adapters.ocr_tesseract import TesseractAdapter
-from adapters.ocr_tesseract_opencv import TesseractOpenCVAdapter
+from adapters.ocr_adapters import TesseractAdapter, TesseractOpenCVAdapter
 from adapters.table_pdfplumber import PdfPlumberAdapter
 from adapters.storage_filesystem import FileStorage
 from application.use_cases import ProcessDocument

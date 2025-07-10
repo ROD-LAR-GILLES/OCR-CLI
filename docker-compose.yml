@@ -4,6 +4,6 @@ services:
       context: .
       dockerfile: Dockerfile
     volumes:
-      - ./pdfs:/pdfs         
+      - ./pdfs:/app/pdfs         
       - ./resultado:/app/resultado
     tty: true              

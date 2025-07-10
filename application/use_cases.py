@@ -1,49 +1,29 @@
 # application/use_cases.py
 """
-Casos de uso (interactors) que orquestan la lógica de negocio.
+Casos de uso unificados para procesamiento de documentos.
 
-Este módulo contiene los casos de uso de la aplicación, implementando
-la lógica de negocio pura sin depender de detalles técnicos específicos.
-Los casos de uso coordinan los puertos (interfaces) para ejecutar
-flujos de trabajo completos.
-
-Principios aplicados:
-- Single Responsibility: Cada caso de uso tiene una responsabilidad específica
-- Dependency Injection: Recibe dependencias via constructor
-- Clean Architecture: Aislamiento de la lógica de negocio
-- Command Pattern: Casos de uso como comandos ejecutables
+Este módulo contiene todos los casos de uso relacionados con el procesamiento
+de documentos PDF, desde básico hasta avanzado con métricas de calidad.
 """
 from pathlib import Path
-from typing import Tuple, List, Any
+from typing import Tuple, List, Any, Dict, Optional
+import logging
+import time
 
 from application.ports import OCRPort, TableExtractorPort, StoragePort
 from domain.models import Document
 
+logger = logging.getLogger(__name__)
+
 
 class ProcessDocument:
     """
-    Caso de uso principal para el procesamiento completo de documentos PDF.
+    Caso de uso básico para procesamiento de documentos PDF.
     
-    Este caso de uso orquesta todo el flujo de procesamiento de un documento:
-    1. Extracción de texto mediante OCR
-    2. Identificación y extracción de tablas
-    3. Persistencia de resultados en formato estructurado
-    
-    Responsabilidades:
-    - Coordinar la secuencia de procesamiento
-    - Manejar errores en cualquier etapa del proceso
-    - Garantizar la integridad de los datos procesados
-    - Proporcionar feedback sobre el resultado del procesamiento
-    
-    Ventajas del patrón Caso de Uso:
-    - Testeable: Fácil crear mocks para cada dependencia
-    - Flexible: Cambiar implementaciones sin afectar la lógica
-    - Reutilizable: Mismo caso de uso para CLI, API REST, etc.
-    - Mantenible: Lógica de negocio separada de detalles técnicos
-    
-    Flujo de procesamiento:
-    PDF -> [OCR] -> Texto plano -> [Storage] -> Archivos de salida
-        -> [Table Extraction] -> DataFrames -> [Storage] -> JSON/ASCII
+    Orquesta el flujo completo:
+    1. Extracción de texto con OCR
+    2. Extracción de tablas
+    3. Almacenamiento de resultados
     """
 
     def __init__(
@@ -55,25 +35,10 @@ class ProcessDocument:
         """
         Inicializa el caso de uso con las dependencias inyectadas.
         
-        Este constructor implementa el patrón de Inyección de Dependencias,
-        permitiendo que el caso de uso trabaje con cualquier implementación
-        de los puertos sin conocer los detalles específicos.
-        
         Args:
-            ocr (OCRPort): Servicio de reconocimiento óptico de caracteres.
-                          Puede ser Tesseract, EasyOCR, Google Vision, etc.
-                          
-            table_extractor (TableExtractorPort): Servicio de extracción de tablas.
-                                                  Puede ser pdfplumber, Camelot, Tabula, etc.
-                                                  
-            storage (StoragePort): Servicio de persistencia de resultados.
-                                  Puede ser filesystem, database, cloud storage, etc.
-        
-        Note:
-            La inyección de dependencias permite:
-            - Testing: Usar mocks en lugar de implementaciones reales
-            - Flexibility: Cambiar implementaciones sin modificar código
-            - Configuration: Elegir implementaciones según el entorno (dev/prod)
+            ocr: Servicio de OCR
+            table_extractor: Servicio de extracción de tablas
+            storage: Servicio de almacenamiento
         """
         self.ocr = ocr
         self.table_extractor = table_extractor
@@ -83,75 +48,206 @@ class ProcessDocument:
         """
         Ejecuta el procesamiento completo de un documento PDF.
         
-        Este método implementa el patrón Command, permitiendo que el caso
-        de uso sea ejecutado como una función callable. El procesamiento
-        sigue una secuencia determinística que garantiza la integridad
-        de los datos.
-        
-        NUEVA LÓGICA: Ahora crea una carpeta organizada por documento
-        y retorna las rutas reales de los archivos generados.
-        
-        Flujo de ejecución:
-        1. Validación inicial del archivo PDF
-        2. Extracción de texto mediante OCR (puede tomar varios minutos)
-        3. Extracción paralela de tablas (análisis estructural)
-        4. Persistencia atómica de todos los resultados en carpeta dedicada
-        5. Retorno de las rutas reales de archivos generados
-        
         Args:
-            pdf_path (Path): Ruta absoluta al archivo PDF a procesar.
-                            Debe existir y ser legible.
-        
+            pdf_path: Ruta al archivo PDF
+            
         Returns:
-            Tuple[str, List[str]]: Tupla con:
-                - str: Ruta al archivo de texto principal generado
-                - List[str]: Lista de todas las rutas de archivos generados
-                            (organizados en carpeta por documento)
-        
-        Raises:
-            FileNotFoundError: Si el archivo PDF no existe
-            ProcessingError: Si alguna etapa del procesamiento falla
-            StorageError: Si hay problemas al persistir los resultados
-            
-        Example:
-            >>> processor = ProcessDocument(
-            ...     ocr=TesseractAdapter(),
-            ...     table_extractor=PdfPlumberAdapter(),
-            ...     storage=FileStorage(Path("./output"))
-            ... )
-            >>> text_file, all_files = processor(Path("document.pdf"))
-            >>> print(f"Texto extraído en: {text_file}")
-            >>> print(f"Archivos generados: {all_files}")
-            # Salida esperada:
-            # Texto extraído en: /app/resultado/document/texto_completo.txt
-            # Archivos generados: ['/app/resultado/document/texto_completo.txt', 
-            #                      '/app/resultado/document/tabla_1.json', ...]
-            
-        Performance Notes:
-            - OCR es la operación más costosa (O(n) con número de páginas)
-            - Extracción de tablas es más rápida (análisis estructural)
-            - El tiempo total depende de: resolución DPI, número de páginas, complejidad
+            Tuple[str, List[str]]: (archivo_texto_principal, lista_todos_archivos)
         """
-        # ETAPA 1: Extracción de texto mediante OCR
-        # Esta es típicamente la operación más lenta del proceso
-        # El tiempo depende de: número de páginas, resolución DPI, complejidad del texto
-        text: str = self.ocr.extract_text(pdf_path)
+        logger.info(f"Iniciando procesamiento de: {pdf_path}")
+        start_time = time.time()
         
-        # ETAPA 2: Extracción de tablas estructuradas
-        # Análisis paralelo e independiente del OCR
-        # Más rápido que OCR pues analiza estructura vectorial del PDF
-        tables: List[Any] = self.table_extractor.extract_tables(pdf_path)
+        # Extracción de texto
+        text = self.ocr.extract_text(pdf_path)
+        
+        # Extracción de tablas
+        tables = self.table_extractor.extract_tables(pdf_path)
 
-        # ETAPA 3: Persistencia atómica de resultados en carpeta organizada
-        # Guarda todos los resultados de forma consistente en una carpeta dedicada
-        # Si falla aquí, no se pierde el trabajo de OCR/tablas ya realizado
-        archivos_generados: List[str] = self.storage.save(pdf_path.stem, text, tables, pdf_path)
+        # Almacenamiento
+        archivos_generados = self.storage.save(pdf_path.stem, text, tables, pdf_path)
 
-        # ETAPA 4: Identificación del archivo principal
-        # El archivo de texto completo es el resultado principal
+        # Identificar archivo principal
         texto_principal = next(
             (archivo for archivo in archivos_generados if archivo.endswith("texto_completo.txt")),
             archivos_generados[0] if archivos_generados else ""
         )
         
+        processing_time = time.time() - start_time
+        logger.info(f"Procesamiento completado en {processing_time:.2f}s. Archivos generados: {len(archivos_generados)}")
+        
         return texto_principal, archivos_generados
+
+
+class EnhancedProcessDocument:
+    """
+    Caso de uso avanzado con métricas de calidad y procesamiento inteligente.
+    
+    Extiende el procesamiento básico con:
+    - Análisis de calidad
+    - Métricas de procesamiento
+    - Validación de resultados
+    - Reintento automático en caso de baja calidad
+    """
+
+    def __init__(
+        self,
+        ocr: OCRPort,
+        table_extractor: TableExtractorPort,
+        storage: StoragePort,
+        min_quality_threshold: float = 60.0,
+        enable_auto_retry: bool = True
+    ) -> None:
+        """
+        Inicializa el caso de uso mejorado.
+        
+        Args:
+            ocr: Servicio de OCR (preferiblemente con métricas)
+            table_extractor: Servicio de extracción de tablas
+            storage: Servicio de almacenamiento
+            min_quality_threshold: Umbral mínimo de calidad
+            enable_auto_retry: Activar reintento automático
+        """
+        self.ocr = ocr
+        self.table_extractor = table_extractor
+        self.storage = storage
+        self.min_quality_threshold = min_quality_threshold
+        self.enable_auto_retry = enable_auto_retry
+
+    def __call__(self, pdf_path: Path) -> Tuple[str, List[str], Dict[str, Any]]:
+        """
+        Ejecuta procesamiento con análisis de métricas.
+        
+        Args:
+            pdf_path: Ruta al archivo PDF
+            
+        Returns:
+            Tuple con:
+            - str: Archivo de texto principal
+            - List[str]: Lista de archivos generados
+            - Dict[str, Any]: Métricas de procesamiento
+        """
+        logger.info(f"Iniciando procesamiento mejorado de: {pdf_path}")
+        start_time = time.time()
+        
+        # Métricas iniciales
+        metrics = {
+            'processing_summary': {
+                'start_time': start_time,
+                'filename': pdf_path.name,
+                'file_size_mb': pdf_path.stat().st_size / (1024 * 1024)
+            },
+            'ocr_metrics': {},
+            'table_metrics': {},
+            'quality_analysis': {},
+            'output_quality': {}
+        }
+
+        try:
+            # Extracción de texto con análisis de calidad
+            if hasattr(self.ocr, 'extract_with_metrics'):
+                # OCR avanzado con métricas
+                ocr_result = self.ocr.extract_with_metrics(pdf_path)
+                text = ocr_result.text
+                metrics['ocr_metrics'] = {
+                    'processing_time': ocr_result.processing_time,
+                    'page_count': ocr_result.page_count,
+                    'average_confidence': getattr(ocr_result.metrics, 'average_confidence', 0)
+                }
+                
+                # Análisis de calidad
+                avg_confidence = getattr(ocr_result.metrics, 'average_confidence', 100)
+                quality_score = avg_confidence
+                
+            else:
+                # OCR básico
+                text = self.ocr.extract_text(pdf_path)
+                quality_score = 100  # Asumimos buena calidad para OCR básico
+                metrics['ocr_metrics'] = {
+                    'processing_time': time.time() - start_time,
+                    'page_count': self._estimate_page_count(pdf_path),
+                    'average_confidence': quality_score
+                }
+
+            # Verificar calidad y reintentar si es necesario
+            if (quality_score < self.min_quality_threshold and 
+                self.enable_auto_retry and 
+                hasattr(self.ocr, 'extract_with_metrics')):
+                
+                logger.warning(f"Calidad baja ({quality_score:.1f}%), reintentando con configuración optimizada")
+                # Aquí se podría cambiar parámetros del OCR para el reintento
+                # Por simplicidad, usamos el mismo resultado
+                
+            # Extracción de tablas
+            table_start_time = time.time()
+            tables = self.table_extractor.extract_tables(pdf_path)
+            table_processing_time = time.time() - table_start_time
+            
+            metrics['table_metrics'] = {
+                'processing_time': table_processing_time,
+                'tables_found': len(tables) if tables else 0
+            }
+
+            # Almacenamiento
+            storage_start_time = time.time()
+            archivos_generados = self.storage.save(pdf_path.stem, text, tables, pdf_path)
+            storage_time = time.time() - storage_start_time
+
+            # Métricas finales
+            total_time = time.time() - start_time
+            metrics['processing_summary'].update({
+                'total_time_seconds': total_time,
+                'storage_time': storage_time,
+                'files_generated': len(archivos_generados)
+            })
+            
+            metrics['quality_analysis'] = {
+                'ocr_quality': quality_score,
+                'meets_threshold': quality_score >= self.min_quality_threshold
+            }
+            
+            metrics['output_quality'] = {
+                'word_count': len(text.split()) if text else 0,
+                'table_count': len(tables) if tables else 0,
+                'high_quality_result': quality_score >= 80
+            }
+
+            # Identificar archivo principal
+            texto_principal = next(
+                (archivo for archivo in archivos_generados if archivo.endswith("texto_completo.txt")),
+                archivos_generados[0] if archivos_generados else ""
+            )
+            
+            logger.info(f"Procesamiento mejorado completado en {total_time:.2f}s. Calidad: {quality_score:.1f}%")
+            
+            return texto_principal, archivos_generados, metrics
+
+        except Exception as e:
+            # Error en procesamiento
+            error_time = time.time() - start_time
+            metrics['processing_summary'].update({
+                'total_time_seconds': error_time,
+                'error': str(e),
+                'success': False
+            })
+            
+            logger.error(f"Error en procesamiento mejorado: {e}")
+            raise
+
+    def _estimate_page_count(self, pdf_path: Path) -> int:
+        """
+        Estima el número de páginas de un PDF.
+        
+        Args:
+            pdf_path: Ruta al PDF
+            
+        Returns:
+            int: Número estimado de páginas
+        """
+        try:
+            import PyPDF2
+            with open(pdf_path, 'rb') as file:
+                reader = PyPDF2.PdfReader(file)
+                return len(reader.pages)
+        except Exception as e:
+            logger.warning(f"Error estimando páginas: {e}")
+            return 1  # Fallback

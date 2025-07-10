@@ -237,12 +237,132 @@ def display_exit_message() -> None:
     print("Saliendo de la aplicación.")
 
 
+def display_pdf_type_menu() -> None:
+    """
+    Muestra el menú de selección de tipo de PDF.
+    
+    Función pura de presentación para optimizar el procesamiento
+    según el tipo de documento.
+    """
+    print("\nTipo de documento PDF a procesar:")
+    print("1. Documento escaneado (imagen digitalizada)")
+    print("2. PDF nativo con texto (generado digitalmente)")
+    print("3. Documento mixto (texto + imagenes/tablas)")
+    print("4. Formulario o documento con muchas tablas")
+    print("5. Volver al menu principal")
+
+
+def get_user_pdf_type_selection() -> int:
+    """
+    Captura y valida selección de tipo de PDF del usuario.
+    
+    Returns:
+        int: Opción de tipo de PDF seleccionada (1-5)
+    """
+    while True:
+        try:
+            choice = int(input("Ingresa tu opcion (1-5): "))
+            if 1 <= choice <= 5:
+                return choice
+            else:
+                print("Opcion invalida. Ingresa un numero entre 1 y 5.")
+        except ValueError:
+            print("Por favor ingresa un numero valido.")
+
+
+def display_pdf_type_info(pdf_type: int) -> None:
+    """
+    Muestra información sobre el tipo de PDF seleccionado y sus optimizaciones.
+    
+    Args:
+        pdf_type (int): Tipo de PDF seleccionado
+    """
+    type_info = {
+        1: {
+            "name": "Documento escaneado",
+            "description": "Optimizado para imagenes digitalizadas con OCR intensivo",
+            "engine": "Tesseract + OpenCV recomendado",
+            "features": ["Correccion de inclinacion", "Eliminacion de ruido", "Mejora de contraste"]
+        },
+        2: {
+            "name": "PDF nativo con texto",
+            "description": "Extraccion directa de texto sin OCR",
+            "engine": "Extraccion nativa + pdfplumber para tablas",
+            "features": ["Extraccion rapida", "Alta precision", "Preserva formato original"]
+        },
+        3: {
+            "name": "Documento mixto",
+            "description": "Combina extraccion nativa y OCR segun necesidad",
+            "engine": "Hibrido inteligente",
+            "features": ["Deteccion automatica", "OCR selectivo", "Optimizacion adaptativa"]
+        },
+        4: {
+            "name": "Formulario con tablas",
+            "description": "Optimizado para extraccion precisa de estructuras tabulares",
+            "engine": "pdfplumber especializado + OCR de respaldo",
+            "features": ["Deteccion avanzada de tablas", "Filtrado inteligente", "Estructura preservada"]
+        }
+    }
+    
+    if pdf_type in type_info:
+        info = type_info[pdf_type]
+        print(f"\nTipo seleccionado: {info['name']}")
+        print(f"Descripcion: {info['description']}")
+        print(f"Motor recomendado: {info['engine']}")
+        print("Caracteristicas:")
+        for feature in info['features']:
+            print(f"   - {feature}")
+
+
+def get_optimized_ocr_config_for_pdf_type(pdf_type: int) -> OCRConfig:
+    """
+    Retorna configuración OCR optimizada según el tipo de PDF.
+    
+    Args:
+        pdf_type (int): Tipo de PDF seleccionado
+        
+    Returns:
+        OCRConfig: Configuración optimizada para el tipo de documento
+    """
+    if pdf_type == 1:  # Documento escaneado
+        return create_ocr_config_from_user_choices(
+            engine_choice=2,  # OpenCV
+            enable_deskewing=True,
+            enable_denoising=True,
+            enable_contrast=True
+        )
+    elif pdf_type == 2:  # PDF nativo
+        return create_ocr_config_from_user_choices(
+            engine_choice=1,  # Básico, más rápido
+            enable_deskewing=False,
+            enable_denoising=False,
+            enable_contrast=False
+        )
+    elif pdf_type == 3:  # Mixto
+        return create_ocr_config_from_user_choices(
+            engine_choice=2,  # OpenCV
+            enable_deskewing=True,
+            enable_denoising=False,  # Más conservador
+            enable_contrast=True
+        )
+    elif pdf_type == 4:  # Formularios/tablas
+        return create_ocr_config_from_user_choices(
+            engine_choice=1,  # Básico para mejor compatibilidad con pdfplumber
+            enable_deskewing=False,
+            enable_denoising=False,
+            enable_contrast=False
+        )
+    else:
+        # Fallback por defecto
+        return create_ocr_config_from_user_choices(1)
+
+
 def process_document_workflow(filename: str) -> None:
     """
     Ejecuta el flujo completo de procesamiento de un documento.
     
-    Esta función coordina la interfaz de usuario para seleccionar opciones
-    de OCR y delega el procesamiento real al controlador.
+    Esta función coordina la interfaz de usuario para seleccionar tipo de PDF,
+    opciones de OCR y delega el procesamiento real al controlador.
     
     Args:
         filename (str): Nombre del archivo PDF a procesar
@@ -253,42 +373,64 @@ def process_document_workflow(filename: str) -> None:
         - DocumentController: Lógica de procesamiento
         - Utilidades: Validación y configuración
     """
-    # SELECCIÓN DEL MOTOR OCR
-    display_ocr_engine_menu()
+    # PASO 1: SELECCIÓN DEL TIPO DE PDF
+    display_pdf_type_menu()
+    pdf_type_choice = get_user_pdf_type_selection()
     
-    ocr_choice = get_user_ocr_selection()
-    
-    if ocr_choice == 3:  # Volver al menú principal
+    if pdf_type_choice == 5:  # Volver al menú principal
         return
     
-    # CONFIGURACIÓN DEL MOTOR OCR
-    if ocr_choice == 1:
-        # Configuración básica
-        ocr_config = create_ocr_config_from_user_choices(1)
+    # Mostrar información del tipo seleccionado
+    display_pdf_type_info(pdf_type_choice)
+    
+    # PASO 2: CONFIGURACIÓN AUTOMÁTICA U OVERRIDE MANUAL
+    print(f"\nConfiguración recomendada para este tipo de documento:")
+    auto_config = get_optimized_ocr_config_for_pdf_type(pdf_type_choice)
+    display_ocr_config_info(auto_config)
+    
+    # Preguntar si quiere usar configuración automática o manual
+    use_auto = input("\n¿Usar configuración recomendada? (s/n): ").lower().startswith('s')
+    
+    if use_auto:
+        ocr_config = auto_config
+        print("Usando configuración optimizada automática.")
+    else:
+        # PASO 3: SELECCIÓN MANUAL DEL MOTOR OCR (solo si no usa automático)
+        display_ocr_engine_menu()
+        ocr_choice = get_user_ocr_selection()
         
-    elif ocr_choice == 2:
-        # Configuración OpenCV
-        if ask_for_advanced_config():
-            # Configuración personalizada
-            deskewing, denoising, contrast = get_advanced_preprocessing_config()
-            ocr_config = create_ocr_config_from_user_choices(
-                2, deskewing, denoising, contrast
-            )
-        else:
-            # Configuración por defecto
-            ocr_config = create_ocr_config_from_user_choices(2)
+        if ocr_choice == 3:  # Volver al menú principal
+            return
+        
+        # CONFIGURACIÓN MANUAL DEL MOTOR OCR
+        if ocr_choice == 1:
+            # Configuración básica
+            ocr_config = create_ocr_config_from_user_choices(1)
+            
+        elif ocr_choice == 2:
+            # Configuración OpenCV
+            if ask_for_advanced_config():
+                # Configuración personalizada
+                deskewing, denoising, contrast = get_advanced_preprocessing_config()
+                ocr_config = create_ocr_config_from_user_choices(
+                    2, deskewing, denoising, contrast
+                )
+            else:
+                # Configuración por defecto
+                ocr_config = create_ocr_config_from_user_choices(2)
+        
+        # Mostrar configuración seleccionada manualmente
+        print("\nConfiguración manual seleccionada:")
+        display_ocr_config_info(ocr_config)
     
-    # Mostrar configuración seleccionada
-    display_ocr_config_info(ocr_config)
-    
-    # PROCESAMIENTO DEL DOCUMENTO
+    # PASO 4: PROCESAMIENTO DEL DOCUMENTO
     display_processing_start(filename)
     
     # Crear controlador y procesar
     controller = DocumentController(PDF_DIR, OUT_DIR)
     success, processing_info = controller.process_document(filename, ocr_config)
     
-    # MOSTRAR RESULTADOS
+    # PASO 5: MOSTRAR RESULTADOS
     if success:
         display_processing_success(processing_info)
     else:
@@ -337,7 +479,30 @@ def main() -> None:
             else:
                 # Obtener archivo seleccionado (lógica delegada)
                 selected_file = get_selected_pdf(pdf_files, selection)
-                process_document_workflow(selected_file)
+                
+                # SELECCIÓN DEL TIPO DE PDF
+                display_pdf_type_menu()
+                pdf_type_selection = get_user_pdf_type_selection()
+                
+                if pdf_type_selection == 5:  # Volver al menú principal
+                    continue
+                
+                # Mostrar información del tipo de PDF
+                display_pdf_type_info(pdf_type_selection)
+                
+                # Obtener configuración OCR optimizada
+                optimized_ocr_config = get_optimized_ocr_config_for_pdf_type(pdf_type_selection)
+                
+                # Procesar documento con configuración optimizada
+                print(f"Procesando {selected_file} con configuración optimizada para {pdf_type_selection}...")
+                controller = DocumentController(PDF_DIR, OUT_DIR)
+                success, processing_info = controller.process_document(selected_file, optimized_ocr_config)
+                
+                # MOSTRAR RESULTADOS
+                if success:
+                    display_processing_success(processing_info)
+                else:
+                    display_processing_error(processing_info)
                 
         except KeyboardInterrupt:
             print("\nSaliendo de la aplicación.")

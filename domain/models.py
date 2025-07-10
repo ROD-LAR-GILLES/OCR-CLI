@@ -12,9 +12,65 @@ Principios aplicados:
 - Immutability: Modelos inmutables para garantizar consistencia
 - Type Safety: Uso de type hints para claridad y validación
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Any
+from typing import List, Any, Dict, Optional
+from datetime import datetime
+
+
+@dataclass
+class ProcessingMetrics:
+    """
+    Métricas de procesamiento y calidad para operaciones de OCR.
+    
+    Contiene información detallada sobre el rendimiento y calidad
+    del procesamiento de documentos.
+    """
+    page_number: Optional[int] = None
+    confidence_score: float = 0.0
+    processing_time: float = 0.0
+    image_quality_score: float = 0.0
+    preprocessing_applied: bool = False
+    metrics_data: Dict[str, Any] = field(default_factory=dict)
+    total_processing_time: float = 0.0
+    average_confidence: float = 0.0
+    document_quality: Dict[str, Any] = field(default_factory=dict)
+    
+    def add_page_metrics(self, page_metrics: 'ProcessingMetrics') -> None:
+        """Acumula métricas de una página al total del documento."""
+        self.total_processing_time += page_metrics.processing_time
+        
+        # Calcular promedio de confianza (implementación simple)
+        if self.average_confidence == 0.0:
+            self.average_confidence = page_metrics.confidence_score
+        else:
+            # Promedio ponderado simple
+            self.average_confidence = (self.average_confidence + page_metrics.confidence_score) / 2
+
+
+@dataclass
+class OCRResult:
+    """
+    Resultado completo de una operación de OCR con métricas.
+    
+    Encapsula tanto el texto extraído como todas las métricas
+    de calidad y rendimiento del procesamiento.
+    """
+    text: str
+    metrics: ProcessingMetrics
+    page_count: int
+    processing_time: float
+    timestamp: datetime = field(default_factory=datetime.now)
+    
+    @property
+    def quality_score(self) -> float:
+        """Puntuación de calidad general del resultado."""
+        return self.metrics.average_confidence
+    
+    @property
+    def is_high_quality(self) -> bool:
+        """Indica si el resultado es de alta calidad."""
+        return self.quality_score >= 80.0
 
 
 @dataclass
@@ -49,67 +105,43 @@ class Document:
     """
     Nombre identificador del documento.
     
-    Típicamente el nombre del archivo original sin extensión.
-    Usado para generar nombres de archivos de salida y como
-    clave de identificación en el sistema.
-    
-    Example: "reporte_financiero_2024"
+    Generalmente corresponde al nombre del archivo original sin extensión,
+    pero puede ser modificado por el usuario para mayor claridad semántica.
+    Debe ser único dentro del contexto de procesamiento.
     """
     
-    text: str
+    source_path: Path
+    """
+    Ruta al archivo PDF original en el sistema de archivos.
+    
+    Mantiene la trazabilidad hacia el documento fuente, permitiendo
+    reprocesamiento si es necesario y validación de integridad.
+    """
+    
+    extracted_text: str
     """
     Texto completo extraído del documento mediante OCR.
     
-    Contiene todo el contenido textual del PDF, con páginas
-    separadas por saltos de línea. Preserva el formato original
-    en la medida de lo posible.
-    
-    Características:
-    - Codificación UTF-8
-    - Separadores de página consistentes
-    - Espacios en blanco preservados para mantener estructura
-    - Caracteres especiales manejados correctamente
-    
-    Example: "TÍTULO DEL DOCUMENTO\n\nPrimera página...\n\n\nSegunda página..."
+    Contiene todo el contenido textual identificado en el documento,
+    preservando la estructura de párrafos y separación entre páginas.
+    El texto puede contener errores típicos de OCR que requieren validación.
     """
     
     tables: List[Any]
     """
-    Lista de tablas extraídas del documento.
+    Lista de tablas extraídas como DataFrames de pandas.
     
-    Cada elemento representa una tabla detectada, típicamente
-    como pandas.DataFrame pero el tipo Any permite flexibilidad
-    para diferentes implementaciones de extracción.
-    
-    Características:
-    - Orden corresponde a aparición en el documento
-    - Estructura tabular preservada (filas/columnas)
-    - Metadatos de posición cuando estén disponibles
-    - Lista vacía si no se detectan tablas
-    
-    Formatos soportados:
-    - pandas.DataFrame: Para análisis estadístico y manipulación
-    - List[List[str]]: Para casos simples de tabla
-    - Dict structures: Para tablas con metadatos complejos
-    
-    Example: [DataFrame(...), DataFrame(...)] para documento con 2 tablas
+    Cada elemento representa una tabla detectada en el documento,
+    manteniendo la estructura de filas y columnas originales.
+    Las tablas están listas para análisis, exportación o transformación.
     """
     
-    source: Path
-    """
-    Ruta al archivo PDF original que generó este documento.
+    # Nuevos campos para métricas avanzadas
+    ocr_result: Optional[OCRResult] = None
+    """Resultado detallado del OCR con métricas de calidad."""
     
-    Mantiene la trazabilidad hacia el archivo fuente para:
-    - Auditoría y verificación
-    - Reprocesamiento si es necesario
-    - Referencia para análisis manual
-    - Backup y archivado
-    
-    Debe ser una ruta absoluta válida y accesible en el momento
-    de creación del modelo.
-    
-    Example: Path("/data/inputs/reporte_financiero_2024.pdf")
-    """
+    processing_metadata: Dict[str, Any] = field(default_factory=dict)
+    """Metadatos adicionales del procesamiento."""
     
     def __post_init__(self) -> None:
         """
@@ -134,7 +166,7 @@ class Document:
             raise ValueError("Document name cannot be empty")
             
         # Validación: texto debe estar inicializado (aunque esté vacío)
-        if self.text is None:
+        if self.extracted_text is None:
             raise ValueError("Document text cannot be None")
             
         # Validación: lista de tablas debe estar inicializada
@@ -142,8 +174,8 @@ class Document:
             self.tables = []
             
         # Validación: archivo fuente debe existir
-        if not self.source.exists():
-            raise FileNotFoundError(f"Source file not found: {self.source}")
+        if not self.source_path.exists():
+            raise FileNotFoundError(f"Source file not found: {self.source_path}")
     
     @property
     def has_tables(self) -> bool:
@@ -178,4 +210,51 @@ class Document:
         Returns:
             int: Número aproximado de palabras en el texto
         """
-        return len(self.text.split()) if self.text else 0
+        return len(self.extracted_text.split()) if self.extracted_text else 0
+    
+    @property
+    def quality_score(self) -> Optional[float]:
+        """
+        Puntuación de calidad del OCR aplicado al documento.
+        
+        Returns:
+            float: Puntuación de confianza promedio (0-100) o None si no disponible
+        """
+        if self.ocr_result:
+            return self.ocr_result.quality_score
+        return None
+    
+    @property
+    def is_high_quality(self) -> bool:
+        """
+        Indica si el documento fue procesado con alta calidad.
+        
+        Returns:
+            bool: True si la calidad es superior al 80%, False en caso contrario
+        """
+        quality = self.quality_score
+        return quality is not None and quality >= 80.0
+    
+    @property
+    def processing_summary(self) -> Dict[str, Any]:
+        """
+        Resumen de métricas de procesamiento del documento.
+        
+        Returns:
+            Dict: Diccionario con métricas clave del procesamiento
+        """
+        summary = {
+            'word_count': self.word_count,
+            'table_count': self.table_count,
+            'has_ocr_metrics': self.ocr_result is not None
+        }
+        
+        if self.ocr_result:
+            summary.update({
+                'quality_score': self.quality_score,
+                'processing_time': self.ocr_result.processing_time,
+                'page_count': self.ocr_result.page_count,
+                'is_high_quality': self.is_high_quality
+            })
+        
+        return summary
