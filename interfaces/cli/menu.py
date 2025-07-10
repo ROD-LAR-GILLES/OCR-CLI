@@ -2,29 +2,37 @@
 """
 Interfaz de línea de comandos interactiva para OCR-CLI.
 
-Este módulo implementa la interfaz de usuario principal de la aplicación,
-proporcionando un menú simple para el procesamiento de
-documentos PDF en entorno Docker.
+Este módulo implementa ÚNICAMENTE la capa de presentación e interacción con el usuario.
+La lógica de negocio está separada en controladores y utilidades para permitir:
+- Testing automatizado sin simulación de I/O
+- Reutilización de lógica en otras interfaces (GUI, API)
+- Mantenibilidad y extensibilidad mejoradas
 
-Responsabilidades:
-- Descubrimiento automático de archivos PDF disponibles
-- Presentación de menú simple para selección de documentos
-- Orquestación del procesamiento usando casos de uso
-- Feedback en tiempo real del progreso y resultados
-- Manejo graceful de errores y casos límite
+Responsabilidades de este módulo (SOLO I/O):
+- Captura de entrada del usuario (input())
+- Presentación de información (print())
+- Formateo y visualización de resultados
+- Manejo de errores de interfaz
 
-Tecnologías utilizadas:
-- input(): Entrada estándar de Python para interacción simple
-- pathlib: Manipulación moderna y multiplataforma de rutas
-- Docker volumes: Integración con sistema de archivos containerizado
+Lógica de negocio delegada a:
+- utils.file_utils: Operaciones de archivos
+- utils.menu_logic: Lógica de menús y validaciones
+- application.controllers: Coordinación de casos de uso
 """
 
 from pathlib import Path
-from adapters.ocr_tesseract import TesseractAdapter
-from adapters.ocr_tesseract_opencv import TesseractOpenCVAdapter
-from adapters.table_pdfplumber import PdfPlumberAdapter
-from adapters.storage_filesystem import FileStorage
-from application.use_cases import ProcessDocument
+from typing import List, Optional
+
+from utils.file_utils import discover_pdf_files, validate_pdf_exists
+from utils.menu_logic import (
+    create_pdf_menu_options, 
+    get_selected_pdf, 
+    is_exit_selection,
+    create_ocr_config_from_user_choices,
+    validate_ocr_engine_choice,
+    OCRConfig
+)
+from application.controllers import DocumentController
 
 # Configuración de directorios Docker
 # Estos paths son montados como volúmenes en docker-compose.yml
@@ -32,242 +40,316 @@ PDF_DIR = Path("/pdfs")            # Directorio de entrada (host: ./pdfs)
 OUT_DIR = Path("/app/resultado")   # Directorio de salida (host: ./resultado)
 
 
-def listar_pdfs() -> list[str]:
+def display_welcome_message() -> None:
     """
-    Descubre y lista todos los archivos PDF disponibles para procesamiento.
+    Muestra mensaje de bienvenida y título de la aplicación.
     
-    Escanea el directorio de entrada en busca de archivos PDF y los
-    ordena alfabéticamente para presentación consistente al usuario.
-    
-    Returns:
-        list[str]: Lista ordenada de nombres de archivos PDF encontrados.
-                   Lista vacía si no hay archivos PDF en el directorio.
-    
-    Example:
-        >>> archivos = listar_pdfs()
-        >>> print(archivos)
-        ['documento1.pdf', 'reporte_financiero.pdf', 'tabla_datos.pdf']
-    
-    Note:
-        - Usa glob pattern "*.pdf" para filtrar solo archivos PDF
-        - Retorna solo nombres de archivo, no rutas completas
-        - Ordenamiento alfabético garantiza experiencia de usuario consistente
-        - Ignora archivos ocultos (que empiecen con .)
+    Función pura de presentación sin lógica de negocio.
     """
-    # Path.glob() encuentra archivos que coinciden con el patrón
-    # "*.pdf" busca cualquier archivo terminado en .pdf
-    # sorted() ordena alfabéticamente para UX consistente
-    return sorted([p.name for p in PDF_DIR.glob("*.pdf")])
+    print("\n" + "="*50)
+    print("OCR-CLI - Procesador de documentos PDF")
+    print("="*50)
 
 
-def procesar_archivo(nombre: str):
+def display_pdf_menu(pdf_files: List[str]) -> None:
     """
-    Ejecuta el procesamiento completo de un archivo PDF específico.
-    
-    Esta función permite al usuario elegir entre diferentes motores de OCR:
-    - TesseractAdapter: OCR básico y rápido
-    - TesseractOpenCVAdapter: OCR avanzado con preprocesamiento OpenCV
-    
-    El usuario puede configurar las opciones de preprocesamiento según
-    la calidad del documento a procesar.
+    Muestra el menú de selección de archivos PDF.
     
     Args:
-        nombre (str): Nombre del archivo PDF a procesar (debe existir en PDF_DIR)
+        pdf_files (List[str]): Lista de archivos PDF disponibles
+        
+    Note:
+        Función pura de presentación. La lógica de creación de opciones
+        está en utils.menu_logic.create_pdf_menu_options()
     """
-    # Construye la ruta completa al archivo PDF
-    pdf_path = PDF_DIR / nombre
+    print("Selecciona un PDF para procesar:")
     
-    # SELECCIÓN DEL MOTOR OCR
-    # Permite al usuario elegir entre adaptadores disponibles
+    menu_options = create_pdf_menu_options(pdf_files)
+    for option in menu_options:
+        print(option.text)
+    
+    print("-" * 50)
+
+
+def get_user_pdf_selection(total_options: int) -> int:
+    """
+    Captura y valida selección de PDF del usuario.
+    
+    Args:
+        total_options (int): Total de opciones disponibles en el menú
+        
+    Returns:
+        int: Opción seleccionada válida
+        
+    Note:
+        Maneja la validación de entrada pero usa utils.menu_logic
+        para la lógica de validación.
+    """
+    from utils.menu_logic import validate_menu_selection
+    
+    while True:
+        try:
+            choice = int(input(f"Ingresa tu opción (1-{total_options}): "))
+            if validate_menu_selection(choice, total_options):
+                return choice
+            else:
+                print(f"Opción inválida. Ingresa un número entre 1 y {total_options}.")
+        except ValueError:
+            print("Por favor ingresa un número válido.")
+        except KeyboardInterrupt:
+            print("\nSaliendo de la aplicación.")
+            raise
+
+
+def display_ocr_engine_menu() -> None:
+    """
+    Muestra el menú de selección de motor OCR.
+    
+    Función pura de presentación.
+    """
     print("\nSelecciona el motor de OCR:")
     print("1. Tesseract básico (rápido)")
     print("2. Tesseract + OpenCV (alta calidad)")
     print("3. Volver al menú principal")
+
+
+def get_user_ocr_selection() -> int:
+    """
+    Captura y valida selección de motor OCR del usuario.
     
+    Returns:
+        int: Opción de motor OCR seleccionada (1, 2, o 3)
+    """
     while True:
         try:
-            ocr_choice = int(input("Ingresa tu opción (1-3): "))
-            if ocr_choice in [1, 2, 3]:
-                break
+            choice = int(input("Ingresa tu opción (1-3): "))
+            if validate_ocr_engine_choice(choice):
+                return choice
             else:
                 print("Opción inválida. Ingresa 1, 2 o 3.")
         except ValueError:
             print("Por favor ingresa un número válido.")
+
+
+def get_advanced_preprocessing_config() -> tuple[bool, bool, bool]:
+    """
+    Captura configuración avanzada de preprocesamiento del usuario.
     
-    if ocr_choice == 3:
+    Returns:
+        tuple: (enable_deskewing, enable_denoising, enable_contrast)
+    """
+    print("\nConfigurando preprocesamiento OpenCV.")
+    
+    enable_deskewing = input(
+        "¿Corregir inclinación del documento? (recomendado para escaneos) (s/n): "
+    ).lower().startswith('s')
+    
+    enable_denoising = input(
+        "¿Aplicar eliminación de ruido? (recomendado para imágenes de baja calidad) (s/n): "
+    ).lower().startswith('s')
+    
+    enable_contrast = input(
+        "¿Mejorar contraste automáticamente? (recomendado para documentos con poca iluminación) (s/n): "
+    ).lower().startswith('s')
+    
+    return enable_deskewing, enable_denoising, enable_contrast
+
+
+def ask_for_advanced_config() -> bool:
+    """
+    Pregunta al usuario si desea configuración avanzada.
+    
+    Returns:
+        bool: True si quiere configuración avanzada, False para valores por defecto
+    """
+    response = input("¿Configurar opciones avanzadas de preprocesamiento? (s/n): ")
+    return response.lower().startswith('s')
+
+
+def display_ocr_config_info(config: OCRConfig) -> None:
+    """
+    Muestra información sobre la configuración OCR seleccionada.
+    
+    Args:
+        config (OCRConfig): Configuración del motor OCR
+    """
+    if config.engine_type == "basic":
+        print("Usando Tesseract básico.")
+    else:
+        print("Usando Tesseract + OpenCV con preprocesamiento avanzado.")
+        print(f"   - Corrección de inclinación: {'SI' if config.enable_deskewing else 'NO'}")
+        print(f"   - Eliminación de ruido: {'SI' if config.enable_denoising else 'NO'}")
+        print(f"   - Mejora de contraste: {'SI' if config.enable_contrast_enhancement else 'NO'}")
+
+
+def display_processing_start(filename: str) -> None:
+    """
+    Muestra mensaje de inicio de procesamiento.
+    
+    Args:
+        filename (str): Nombre del archivo a procesar
+    """
+    print(f"\nIniciando procesamiento de {filename}.")
+
+
+def display_processing_success(processing_info: dict) -> None:
+    """
+    Muestra información de procesamiento exitoso.
+    
+    Args:
+        processing_info (dict): Información del procesamiento exitoso
+    """
+    print(f"\n{processing_info['filename']} procesado exitosamente!")
+    print(f"Tiempo de procesamiento: {processing_info['processing_time']:.2f} segundos")
+    print(f"Archivos generados: {processing_info['files_count']}")
+    print(f"   - Texto principal: {processing_info['main_text_file']}")
+    print(f"   - Todos los archivos: {processing_info['generated_files']}")
+    
+    # Mostrar información adicional si se usó OpenCV
+    if processing_info['ocr_config'].engine_type == "opencv":
+        print("Preprocesamiento OpenCV aplicado con éxito")
+
+
+def display_processing_error(error_info: dict) -> None:
+    """
+    Muestra información de error en el procesamiento.
+    
+    Args:
+        error_info (dict): Información del error ocurrido
+    """
+    print(f"\nError procesando {error_info['filename']}:")
+    print(f"   Error: {error_info['error']}")
+    print(f"   Tiempo hasta error: {error_info['processing_time']:.2f} segundos")
+    print("   Sugerencia: Prueba con el motor básico si el documento es de alta calidad")
+
+
+def display_no_pdfs_message() -> None:
+    """
+    Muestra mensaje cuando no hay archivos PDF disponibles.
+    """
+    print("No hay PDFs en /pdfs. Añade archivos y reconstruye la imagen.")
+
+
+def display_exit_message() -> None:
+    """
+    Muestra mensaje de salida de la aplicación.
+    """
+    print("Saliendo de la aplicación.")
+
+
+def process_document_workflow(filename: str) -> None:
+    """
+    Ejecuta el flujo completo de procesamiento de un documento.
+    
+    Esta función coordina la interfaz de usuario para seleccionar opciones
+    de OCR y delega el procesamiento real al controlador.
+    
+    Args:
+        filename (str): Nombre del archivo PDF a procesar
+        
+    Note:
+        Separación de responsabilidades:
+        - Esta función: I/O y presentación
+        - DocumentController: Lógica de procesamiento
+        - Utilidades: Validación y configuración
+    """
+    # SELECCIÓN DEL MOTOR OCR
+    display_ocr_engine_menu()
+    
+    ocr_choice = get_user_ocr_selection()
+    
+    if ocr_choice == 3:  # Volver al menú principal
         return
     
-    # CONFIGURACIÓN DEL ADAPTADOR OCR
+    # CONFIGURACIÓN DEL MOTOR OCR
     if ocr_choice == 1:
-        # TesseractAdapter: Configuración básica optimizada para velocidad
-        ocr_adapter = TesseractAdapter()
-        print(f"\nUsando Tesseract básico.")
+        # Configuración básica
+        ocr_config = create_ocr_config_from_user_choices(1)
         
     elif ocr_choice == 2:
-        # TesseractOpenCVAdapter: Configuración avanzada con preprocesamiento
-        print(f"\nConfigurando preprocesamiento OpenCV.")
-        
-        # Permitir al usuario personalizar el preprocesamiento
-        advanced_config = input("¿Configurar opciones avanzadas de preprocesamiento? (s/n): ").lower().startswith('s')
-        
-        if advanced_config:
-            # Configuración granular de OpenCV
-            enable_deskewing = input("¿Corregir inclinación del documento? (recomendado para escaneos) (s/n): ").lower().startswith('s')
-            enable_denoising = input("¿Aplicar eliminación de ruido? (recomendado para imágenes de baja calidad) (s/n): ").lower().startswith('s')
-            enable_contrast = input("¿Mejorar contraste automáticamente? (recomendado para documentos con poca iluminación) (s/n): ").lower().startswith('s')
-            
-            ocr_adapter = TesseractOpenCVAdapter(
-                enable_deskewing=enable_deskewing,
-                enable_denoising=enable_denoising,
-                enable_contrast_enhancement=enable_contrast,
+        # Configuración OpenCV
+        if ask_for_advanced_config():
+            # Configuración personalizada
+            deskewing, denoising, contrast = get_advanced_preprocessing_config()
+            ocr_config = create_ocr_config_from_user_choices(
+                2, deskewing, denoising, contrast
             )
         else:
-            # Configuración por defecto: todas las mejoras activadas
-            ocr_adapter = TesseractOpenCVAdapter()
-            
-        print(f"Usando Tesseract + OpenCV con preprocesamiento avanzado.")
-        
-        # Mostrar configuración aplicada
-        config_info = ocr_adapter.get_preprocessing_info()
-        print(f"   - Corrección de inclinación: {'SI' if config_info['deskewing_enabled'] else 'NO'}")
-        print(f"   - Eliminación de ruido: {'SI' if config_info['denoising_enabled'] else 'NO'}")
-        print(f"   - Mejora de contraste: {'SI' if config_info['contrast_enhancement_enabled'] else 'NO'}")
-        print(f"   - OpenCV versión: {config_info['opencv_version']}")
+            # Configuración por defecto
+            ocr_config = create_ocr_config_from_user_choices(2)
     
-    # CONFIGURACIÓN DE ADAPTADORES AUXILIARES
-    # PdfPlumberAdapter: Extracción de tablas de PDFs nativos
-    table_adapter = PdfPlumberAdapter()
+    # Mostrar configuración seleccionada
+    display_ocr_config_info(ocr_config)
     
-    # FileStorage: Persistencia local con múltiples formatos de salida
-    storage_adapter = FileStorage(OUT_DIR)
+    # PROCESAMIENTO DEL DOCUMENTO
+    display_processing_start(filename)
     
-    # INSTANCIACIÓN DEL CASO DE USO
-    # ProcessDocument orquesta todo el flujo de procesamiento
-    interactor = ProcessDocument(
-        ocr=ocr_adapter,
-        table_extractor=table_adapter,
-        storage=storage_adapter,
-    )
+    # Crear controlador y procesar
+    controller = DocumentController(PDF_DIR, OUT_DIR)
+    success, processing_info = controller.process_document(filename, ocr_config)
     
-    # EJECUCIÓN DEL PROCESAMIENTO CON MEDICIÓN DE TIEMPO
-    print(f"\nIniciando procesamiento de {nombre}.")
-    import time
-    start_time = time.time()
-    
-    try:
-        # Ejecutar procesamiento completo
-        texto_principal, archivos_generados = interactor(pdf_path)
-        
-        # Calcular tiempo de procesamiento
-        processing_time = time.time() - start_time
-        
-        # FEEDBACK DETALLADO AL USUARIO
-        print(f"\n{nombre} procesado exitosamente!")
-        print(f"Tiempo de procesamiento: {processing_time:.2f} segundos")
-        print(f"Archivos generados: {len(archivos_generados)}")
-        print(f"   - Texto principal: {texto_principal}")
-        print(f"   - Todos los archivos: {archivos_generados}")
-        
-        # Mostrar estadísticas si usamos OpenCV
-        if isinstance(ocr_adapter, TesseractOpenCVAdapter):
-            print(f"Preprocesamiento OpenCV aplicado con éxito")
-            
-    except Exception as e:
-        # Manejo de errores con información detallada
-        processing_time = time.time() - start_time
-        print(f"\nError procesando {nombre}:")
-        print(f"   Error: {str(e)}")
-        print(f"   Tiempo hasta error: {processing_time:.2f} segundos")
-        print(f"   Sugerencia: Prueba con el motor básico si el documento es de alta calidad")
+    # MOSTRAR RESULTADOS
+    if success:
+        display_processing_success(processing_info)
+    else:
+        display_processing_error(processing_info)
     
     print()  # Línea en blanco para separación visual
 
 
-def main():
+def main() -> None:
     """
     Función principal que ejecuta el bucle interactivo de la aplicación.
     
-    Implementa el bucle principal de la interfaz de usuario:
-    1. Descubrimiento de archivos PDF disponibles
-    2. Presentación de menú simple
-    3. Procesamiento de selección del usuario
-    4. Repetición hasta que el usuario elija salir
+    Implementa ÚNICAMENTE la lógica de presentación e interacción:
+    - Muestra menús
+    - Captura entrada del usuario  
+    - Delega lógica de negocio a utilidades y controladores
     
-    Características de UX:
-    - Menú simple con números
-    - Opción de salida clara
-    - Validación automática de archivos disponibles
-    - Feedback inmediato cuando no hay archivos
-    - Loop continuo para procesar múltiples archivos
-    
-    Flow de la aplicación:
-    ```
-    Inicio -> Escanear PDFs -> ¿Hay archivos? 
-                                    |
-                                   No -> Mensaje de error -> Salir
-                                    |
-                                   Sí -> Mostrar menú -> Selección usuario
-                                                              |
-                                                         Procesar -> Loop
-                                                              |
-                                                           Salir -> Fin
-    ```
-    
-    Error Handling:
-    - Directorio PDF_DIR no existe: Mensaje informativo
-    - Sin archivos PDF: Instrucciones para agregar archivos
-    - Errores de procesamiento: Capturados y mostrados al usuario
-    - Interrupciones de teclado (Ctrl+C): Salida graceful
-    
-    Docker Integration:
-    - PDF_DIR (/pdfs) mapeado como volumen desde host
-    - Cambios en directorio host se reflejan inmediatamente
-    - No requiere reconstruir imagen para agregar archivos
+    Separación de responsabilidades:
+    - Esta función: I/O puro
+    - utils.file_utils: Descubrimiento de archivos
+    - utils.menu_logic: Validación de selecciones
+    - DocumentController: Procesamiento de documentos
     """
-    # Bucle principal de la aplicación
     while True:
-        # DESCUBRIMIENTO DE ARCHIVOS
-        # Escanea el directorio montado en busca de PDFs disponibles
-        archivos = listar_pdfs()
-        
-        # VALIDACIÓN DE DISPONIBILIDAD
-        # Si no hay archivos, informa al usuario y termina gracefully
-        if not archivos:
-            print("No hay PDFs en /pdfs. Añade archivos y reconstruye la imagen.")
-            break
-
-        # PRESENTACIÓN DEL MENÚ SIMPLE
-        print("\n" + "="*50)
-        print("OCR-CLI - Procesador de documentos PDF")
-        print("="*50)
-        print("Selecciona un PDF para procesar:")
-        
-        for i, archivo in enumerate(archivos, 1):
-            print(f"{i}. {archivo}")
-        
-        print(f"{len(archivos) + 1}. Salir")
-        print("-" * 50)
-
-        # PROCESAMIENTO DE SELECCIÓN
-        while True:
-            try:
-                choice = int(input(f"Ingresa tu opción (1-{len(archivos) + 1}): "))
-                if 1 <= choice <= len(archivos):
-                    # Usuario seleccionó un archivo PDF válido
-                    archivo_seleccionado = archivos[choice - 1]
-                    procesar_archivo(archivo_seleccionado)
-                    break
-                elif choice == len(archivos) + 1:
-                    # Usuario seleccionó "Salir"
-                    print("Saliendo de la aplicación.")
-                    return
-                else:
-                    print(f"Opción inválida. Ingresa un número entre 1 y {len(archivos) + 1}.")
-            except ValueError:
-                print("Por favor ingresa un número válido.")
-            except KeyboardInterrupt:
-                print("\nSaliendo de la aplicación.")
+        try:
+            # DESCUBRIMIENTO DE ARCHIVOS (delegado a utilidad)
+            pdf_files = discover_pdf_files(PDF_DIR)
+            
+            # VALIDACIÓN DE DISPONIBILIDAD
+            if not pdf_files:
+                display_no_pdfs_message()
+                break
+            
+            # PRESENTACIÓN DEL MENÚ
+            display_welcome_message()
+            display_pdf_menu(pdf_files)
+            
+            # CAPTURA DE SELECCIÓN
+            total_options = len(pdf_files) + 1  # +1 para opción "Salir"
+            selection = get_user_pdf_selection(total_options)
+            
+            # PROCESAMIENTO DE SELECCIÓN (usando lógica separada)
+            if is_exit_selection(selection, len(pdf_files)):
+                display_exit_message()
                 return
+            else:
+                # Obtener archivo seleccionado (lógica delegada)
+                selected_file = get_selected_pdf(pdf_files, selection)
+                process_document_workflow(selected_file)
+                
+        except KeyboardInterrupt:
+            print("\nSaliendo de la aplicación.")
+            return
+        except FileNotFoundError:
+            print("Error: El directorio de PDFs no está disponible.")
+            print("Verifica que el contenedor esté configurado correctamente.")
+            break
+        except Exception as e:
+            print(f"Error inesperado: {e}")
+            print("Contacta al administrador del sistema.")
+            break
 
 
 if __name__ == "__main__":
