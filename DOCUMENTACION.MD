@@ -4,9 +4,9 @@
 
 OCR-CLI es una aplicación de línea de comandos diseñada con **arquitectura hexagonal** (puertos y adaptadores) para procesar documentos PDF mediante OCR (Reconocimiento Óptico de Caracteres) y extracción de tablas. El proyecto está completamente documentado con docstrings detallados y comentarios explicativos siguiendo las mejores prácticas de Python.
 
-## � Características de la Documentación
+##  Características de la Documentación
 
-### **Documentación Completa Implementada**
+### ✅ **Documentación Completa Implementada**
 
 **Todos los archivos ahora incluyen:**
 - **Docstrings de módulo**: Explicación del propósito y responsabilidades
@@ -18,7 +18,7 @@ OCR-CLI es una aplicación de línea de comandos diseñada con **arquitectura he
 
 ### 📚 **Nivel de Detalle por Archivo**
 
-#### **Adaptadores (Implementaciones Técnicas)**
+#### **🔧 Adaptadores (Implementaciones Técnicas)**
 - **`ocr_tesseract.py`**: 
   - Configuraciones de Tesseract (idiomas, DPI, calidad vs velocidad)
   - Proceso detallado: PDF → Imagen → OCR → Texto
@@ -37,7 +37,7 @@ OCR-CLI es una aplicación de línea de comandos diseñada con **arquitectura he
   - Opciones de tabulate para diferentes visualizaciones
   - Trazabilidad y backup de archivos originales
 
-#### **Dominio y Aplicación (Lógica de Negocio)**
+#### **🏛️ Dominio y Aplicación (Lógica de Negocio)**
 - **`models.py`**: 
   - Entidades inmutables con validaciones post-inicialización
   - Propiedades calculadas (word_count, table_count)
@@ -56,7 +56,7 @@ OCR-CLI es una aplicación de línea de comandos diseñada con **arquitectura he
   - Performance notes y consideraciones de escalabilidad
   - Manejo de errores en cada etapa
 
-#### **Interfaces (Puntos de Entrada)**
+#### **🖥️ Interfaces (Puntos de Entrada)**
 - **`menu.py`**:
   - Integración completa con Docker y volúmenes
   - Configuración detallada de questionary para UX óptima
@@ -68,7 +68,7 @@ OCR-CLI es una aplicación de línea de comandos diseñada con **arquitectura he
   - Formas de ejecución (directo, módulo, Docker)
   - Extensiones futuras planificadas
 
-## Configuraciones de Librerías Documentadas
+## 🛠️ Configuraciones de Librerías Documentadas
 
 ### **Tesseract OCR**
 ```python
@@ -133,7 +133,7 @@ questionary.select(
 )
 ```
 
-## Arquitectura Documentada
+## 🏗️ Arquitectura Documentada
 
 ### **Flujo de Datos Completo**
 ```
@@ -185,7 +185,7 @@ questionary.select(
 - Implementaciones concretas inyectadas via constructor
 - Dominio independiente de detalles técnicos
 
-## Guías de Desarrollo Documentadas
+## 🔧 Guías de Desarrollo Documentadas
 
 ### **Agregar Nuevo Adaptador OCR**
 ```python
@@ -248,7 +248,7 @@ def test_process_document_with_mocks():
     mock_storage.save.assert_called_once()
 ```
 
-## Roadmap con Documentación Técnica
+## 🚀 Roadmap con Documentación Técnica
 
 ### **1. Multi-OCR con Configuración Avanzada**
 ```python
@@ -395,29 +395,29 @@ cv2.morphologyEx(image, cv2.MORPH_CLOSE, kernel)
 La aplicación ahora permite elegir entre adaptadores:
 ```
 Selecciona el motor de OCR:
-1. Tesseract básico (rápido)
-2. Tesseract + OpenCV (alta calidad)
-3. Volver al menú principal
+❯ Tesseract básico (rápido)
+  Tesseract + OpenCV (alta calidad)
+  Volver al menú principal
 ```
 
 **Configuración Avanzada**:
 ```
 ¿Configurar opciones avanzadas de preprocesamiento?
-¿Corregir inclinación del documento? (recomendado para escaneos)
-¿Aplicar eliminación de ruido? (recomendado para imágenes de baja calidad)
-¿Mejorar contraste automáticamente? (recomendado para documentos con poca iluminación)
+❯ ¿Corregir inclinación del documento? (recomendado para escaneos)
+  ¿Aplicar eliminación de ruido? (recomendado para imágenes de baja calidad)
+  ¿Mejorar contraste automáticamente? (recomendado para documentos con poca iluminación)
 ```
 
 #### **Casos de Uso Recomendados**:
 
-**Usar TesseractOpenCVAdapter para**:
+**✅ Usar TesseractOpenCVAdapter para**:
 - Documentos escaneados de baja calidad
 - PDFs con ruido o artefactos de compresión
 - Documentos inclinados o rotados
 - Texto con poco contraste o mala iluminación
 - Formularios con líneas que interfieren con el texto
 
-**Usar TesseractAdapter básico para**:
+**⚡ Usar TesseractAdapter básico para**:
 - PDFs nativos de alta calidad
 - Documentos generados digitalmente
 - Casos donde se prioriza velocidad sobre precisión
@@ -441,9 +441,9 @@ numpy==1.24.3             # Soporte para arrays de OpenCV
 
 Consulta `OPENCV_GUIDE.md` para documentación detallada y ejemplos de configuración avanzada.
 
-## Estado de Documentación
+## ✅ Estado de Documentación
 
-### **Completado**
+### **Completado ✅**
 - [x] Docstrings completos en todos los módulos
 - [x] Comentarios inline explicativos
 - [x] Configuraciones de librerías documentadas
