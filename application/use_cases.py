@@ -79,7 +79,7 @@ class ProcessDocument:
         self.table_extractor = table_extractor
         self.storage = storage
 
-    def __call__(self, pdf_path: Path) -> Tuple[Path, List[Path]]:
+    def __call__(self, pdf_path: Path) -> Tuple[str, List[str]]:
         """
         Ejecuta el procesamiento completo de un documento PDF.
         
@@ -88,22 +88,25 @@ class ProcessDocument:
         sigue una secuencia determinística que garantiza la integridad
         de los datos.
         
+        NUEVA LÓGICA: Ahora crea una carpeta organizada por documento
+        y retorna las rutas reales de los archivos generados.
+        
         Flujo de ejecución:
         1. Validación inicial del archivo PDF
         2. Extracción de texto mediante OCR (puede tomar varios minutos)
         3. Extracción paralela de tablas (análisis estructural)
-        4. Persistencia atómica de todos los resultados
-        5. Generación de metadatos de resultado
+        4. Persistencia atómica de todos los resultados en carpeta dedicada
+        5. Retorno de las rutas reales de archivos generados
         
         Args:
             pdf_path (Path): Ruta absoluta al archivo PDF a procesar.
                             Debe existir y ser legible.
         
         Returns:
-            Tuple[Path, List[Path]]: Tupla con:
-                - Path: Ruta al archivo de texto principal generado
-                - List[Path]: Lista de todas las rutas de archivos generados
-                             (texto, tablas JSON, tablas ASCII, PDF copia)
+            Tuple[str, List[str]]: Tupla con:
+                - str: Ruta al archivo de texto principal generado
+                - List[str]: Lista de todas las rutas de archivos generados
+                            (organizados en carpeta por documento)
         
         Raises:
             FileNotFoundError: Si el archivo PDF no existe
@@ -119,6 +122,10 @@ class ProcessDocument:
             >>> text_file, all_files = processor(Path("document.pdf"))
             >>> print(f"Texto extraído en: {text_file}")
             >>> print(f"Archivos generados: {all_files}")
+            # Salida esperada:
+            # Texto extraído en: /app/resultado/document/texto_completo.txt
+            # Archivos generados: ['/app/resultado/document/texto_completo.txt', 
+            #                      '/app/resultado/document/tabla_1.json', ...]
             
         Performance Notes:
             - OCR es la operación más costosa (O(n) con número de páginas)
@@ -135,19 +142,16 @@ class ProcessDocument:
         # Más rápido que OCR pues analiza estructura vectorial del PDF
         tables: List[Any] = self.table_extractor.extract_tables(pdf_path)
 
-        # ETAPA 3: Persistencia atómica de resultados
-        # Guarda todos los resultados de forma consistente
+        # ETAPA 3: Persistencia atómica de resultados en carpeta organizada
+        # Guarda todos los resultados de forma consistente en una carpeta dedicada
         # Si falla aquí, no se pierde el trabajo de OCR/tablas ya realizado
-        self.storage.save(pdf_path, text, tables, pdf_path)
+        archivos_generados: List[str] = self.storage.save(pdf_path, text, tables, pdf_path)
 
-        # ETAPA 4: Generación de metadatos de resultado
-        # Proporciona información sobre los archivos generados para el usuario
-        text_file = pdf_path.with_suffix(".txt")
-        all_generated_files = [
-            pdf_path.with_suffix(".pdf"),  # Copia del original
-            pdf_path.with_suffix(".txt"),  # Texto extraído
-            # Nota: archivos de tablas JSON/ASCII se generan dinámicamente
-            # según el número de tablas detectadas
-        ]
+        # ETAPA 4: Identificación del archivo principal
+        # El archivo de texto completo es el resultado principal
+        texto_principal = next(
+            (archivo for archivo in archivos_generados if archivo.endswith("texto_completo.txt")),
+            archivos_generados[0] if archivos_generados else ""
+        )
         
-        return text_file, all_generated_files
+        return texto_principal, archivos_generados

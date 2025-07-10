@@ -145,7 +145,7 @@ class StoragePort(ABC):
     """
     
     @abstractmethod
-    def save(self, name: str, text: str, tables: List[Any], original: Path) -> None:
+    def save(self, name: str, text: str, tables: List[Any], original: Path) -> List[str]:
         """
         Persiste los resultados del procesamiento de un documento.
         
@@ -155,12 +155,16 @@ class StoragePort(ABC):
         - Mantener referencia al documento original
         - Generar identificadores únicos para evitar colisiones
         - Manejar transacciones para garantizar consistencia
+        - Retornar la lista de archivos/recursos generados
         
         Args:
             name (str): Nombre identificador del documento (sin extensión)
             text (str): Texto completo extraído por OCR
             tables (List[Any]): Lista de tablas extraídas del documento
             original (Path): Ruta al archivo PDF original para referencia
+            
+        Returns:
+            List[str]: Lista de rutas/identificadores de los archivos generados
             
         Raises:
             StorageError: Si hay problemas en la persistencia
