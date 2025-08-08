@@ -9,7 +9,8 @@ import time
 from pathlib import Path
 from typing import Tuple, List, Dict, Any
 
-from adapters.ocr_adapters import TesseractAdapter, TesseractOpenCVAdapter
+from adapters.ocr_tesseract import TesseractAdapter
+from adapters.ocr_tesseract_opencv import TesseractOpenCVAdapter
 from adapters.table_pdfplumber import PdfPlumberAdapter
 from adapters.storage_filesystem import FileStorage
 from application.use_cases import ProcessDocument
@@ -67,6 +68,7 @@ class DocumentController:
                 "processing_time": 0
             }
         
+        start_time = time.time()
         try:
             # Configurar adaptadores basado en la configuración
             ocr_adapter = self._create_ocr_adapter(ocr_config)
@@ -80,22 +82,15 @@ class DocumentController:
                 storage=storage_adapter
             )
             
-            # Medir tiempo de procesamiento
-            start_time = time.time()
-            
             # Ejecutar procesamiento
-            try:
-                result = processor(pdf_path)
-                
-                # Verificar si es una tupla con 2 elementos
-                if isinstance(result, tuple) and len(result) == 2:
-                    texto_principal, archivos_generados = result
-                else:
-                    raise ValueError(f"ProcessDocument retornó {type(result)} en lugar de tupla de 2 elementos: {result}")
-                    
-            except Exception as debug_error:
-                raise Exception(f"Error en processor(): {debug_error}")
+            result = processor(pdf_path)
             
+            # Verificar si es una tupla con 2 elementos
+            if isinstance(result, tuple) and len(result) == 2:
+                texto_principal, archivos_generados = result
+            else:
+                raise ValueError(f"ProcessDocument retornó {type(result)} en lugar de tupla de 2 elementos: {result}")
+                
             processing_time = time.time() - start_time
             
             return True, {
