@@ -14,16 +14,16 @@ class MenuOption:
     """Representa una opción de menú con su identificador y descripción."""
     id: int
     text: str
-    value: str = ""
+    value: str
 
 
 @dataclass
 class OCRConfig:
     """Configuración para el motor de OCR seleccionado."""
     engine_type: str  # "basic" o "opencv"
-    enable_deskewing: bool = True
-    enable_denoising: bool = True
-    enable_contrast_enhancement: bool = True
+    enable_deskewing: bool = False
+    enable_denoising: bool = False
+    enable_contrast_enhancement: bool = False
 
 
 def create_pdf_menu_options(pdf_files: List[str]) -> List[MenuOption]:
@@ -42,15 +42,20 @@ def create_pdf_menu_options(pdf_files: List[str]) -> List[MenuOption]:
         >>> print(options[0].text)
         "1. doc1.pdf"
     """
-    options = []
+    options: List[MenuOption] = []
     for i, filename in enumerate(pdf_files, 1):
         options.append(MenuOption(id=i, text=f"{i}. {filename}", value=filename))
     
-    # Agregar opción de salida
+    # Agregar opción de salida siempre al final
     exit_id = len(pdf_files) + 1
     options.append(MenuOption(id=exit_id, text=f"{exit_id}. Salir", value="exit"))
     
     return options
+
+
+def total_menu_options_count(pdf_files: List[str]) -> int:
+    """Cantidad total de opciones incluyendo "Salir"."""
+    return len(pdf_files) + 1
 
 
 def validate_menu_selection(selection: int, total_options: int) -> bool:
@@ -70,6 +75,8 @@ def validate_menu_selection(selection: int, total_options: int) -> bool:
         >>> validate_menu_selection(6, 5)
         False
     """
+    if not isinstance(selection, int) or not isinstance(total_options, int):
+        return False
     return 1 <= selection <= total_options
 
 
@@ -85,7 +92,7 @@ def get_selected_pdf(pdf_files: List[str], selection: int) -> str:
         str: Nombre del archivo PDF seleccionado
         
     Raises:
-        ValueError: Si la selección está fuera de rango
+        ValueError: Si la selección está fuera de rango o la lista está vacía
         IndexError: Si hay problemas con los índices
         
     Example:
@@ -97,12 +104,12 @@ def get_selected_pdf(pdf_files: List[str], selection: int) -> str:
         raise ValueError("No hay archivos PDF disponibles")
     
     if not validate_menu_selection(selection, len(pdf_files)):
-        raise ValueError(f"Selección {selection} fuera de rango. Opciones válidas: 1-{len(pdf_files)}")
+        raise ValueError("Selección fuera de rango")
     
     try:
-        return pdf_files[selection - 1]  # Convertir a 0-indexed
+        return pdf_files[selection - 1]
     except IndexError as e:
-        raise IndexError(f"Error de índice al seleccionar archivo: {e}")
+        raise IndexError(f"Índice inválido: {e}")
 
 
 def is_exit_selection(selection: int, total_pdf_files: int) -> bool:
@@ -130,51 +137,33 @@ def create_ocr_config_from_user_choices(
     enable_contrast: bool = True
 ) -> OCRConfig:
     """
-    Crea configuración de OCR basada en las elecciones del usuario.
+    Crea la configuración OCR a partir de las elecciones del usuario.
     
-    Args:
-        engine_choice (int): 1 para básico, 2 para OpenCV
-        enable_deskewing (bool): Habilitar corrección de inclinación
-        enable_denoising (bool): Habilitar eliminación de ruido
-        enable_contrast (bool): Habilitar mejora de contraste
-        
-    Returns:
-        OCRConfig: Configuración del motor OCR
-        
-    Raises:
-        ValueError: Si engine_choice no es válido
-        
-    Example:
-        >>> config = create_ocr_config_from_user_choices(2, True, False, True)
-        >>> print(config.engine_type)
-        "opencv"
+    engine_choice:
+        1 -> Tesseract básico (sin preprocesamiento)
+        2 -> Tesseract + OpenCV (con flags configurables)
     """
     if engine_choice == 1:
         return OCRConfig(
             engine_type="basic",
             enable_deskewing=False,
             enable_denoising=False,
-            enable_contrast_enhancement=False
+            enable_contrast_enhancement=False,
         )
     elif engine_choice == 2:
         return OCRConfig(
             engine_type="opencv",
             enable_deskewing=enable_deskewing,
             enable_denoising=enable_denoising,
-            enable_contrast_enhancement=enable_contrast
+            enable_contrast_enhancement=enable_contrast,
         )
     else:
-        raise ValueError(f"Opción de motor inválida: {engine_choice}. Use 1 (básico) o 2 (OpenCV)")
+        raise ValueError("Opción de motor OCR inválida. Use 1 (basic) o 2 (opencv)")
 
 
 def validate_ocr_engine_choice(choice: int) -> bool:
     """
-    Valida que la elección del motor OCR sea válida.
-    
-    Args:
-        choice (int): Opción elegida por el usuario
-        
-    Returns:
-        bool: True si es válida (1, 2, o 3), False en caso contrario
+    Valida que la opción de motor OCR esté en el conjunto permitido.
+    Válidos: 1 (basic), 2 (opencv), 3 (volver).
     """
-    return choice in [1, 2, 3]
+    return isinstance(choice, int) and choice in {1, 2, 3}
