@@ -3,12 +3,24 @@
 Módulo de configuración para el sistema OCR mejorado.
 """
 
-from .system_config import (
-    SystemConfig,
-    QUALITY_PROFILES
+from .enhanced_config import (
+    EnhancedSystemConfig,
+    OCRConfig,
+    PreprocessingConfig,
+    QualityConfig,
+    ProcessingConfig,
+    QUALITY_PROFILES,
+    load_config_from_file,
+    save_config_to_file
 )
 
 __all__ = [
-    'SystemConfig',
-    'QUALITY_PROFILES'
+    'EnhancedSystemConfig',
+    'OCRConfig',
+    'PreprocessingConfig',
+    'QualityConfig',
+    'ProcessingConfig',
+    'QUALITY_PROFILES',
+    'load_config_from_file',
+    'save_config_to_file'
 ]
