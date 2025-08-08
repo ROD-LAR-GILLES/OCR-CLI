@@ -36,9 +36,12 @@ def discover_pdf_files(directory: Path) -> List[str]:
         raise NotADirectoryError(f"{directory} no es un directorio")
     
     try:
-        # Buscar archivos PDF y ordenar alfabéticamente
-        pdf_files = [p.name for p in directory.glob("*.pdf") if p.is_file()]
-        return sorted(pdf_files)
+        # Buscar archivos PDF de forma case-insensitive y ordenar sin sensibilidad a mayúsculas
+        pdf_files = [
+            p.name for p in directory.iterdir()
+            if p.is_file() and p.suffix.lower() == ".pdf"
+        ]
+        return sorted(pdf_files, key=lambda s: s.lower())
     except PermissionError as e:
         raise PermissionError(f"Sin permisos para leer {directory}: {e}")
 
@@ -59,7 +62,7 @@ def validate_pdf_exists(directory: Path, filename: str) -> bool:
         True
     """
     file_path = directory / filename
-    return file_path.exists() and file_path.is_file() and filename.endswith('.pdf')
+    return file_path.exists() and file_path.is_file() and file_path.suffix.lower() == '.pdf'
 
 
 def get_file_info(file_path: Path) -> dict:
