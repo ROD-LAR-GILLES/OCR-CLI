@@ -31,7 +31,7 @@ class ProcessingMetrics:
     processing_time: float = 0.0
     image_quality_score: float = 0.0
     preprocessing_applied: bool = False
-    metrics_data: Dict[str, Any] = field(default_factory=dict)
+    quality_metrics: Dict[str, Any] = field(default_factory=dict)
     total_processing_time: float = 0.0
     average_confidence: float = 0.0
     document_quality: Dict[str, Any] = field(default_factory=dict)
